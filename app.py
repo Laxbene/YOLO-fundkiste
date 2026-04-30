@@ -1,6 +1,5 @@
 
 import streamlit as st
-fromimport streamlit as st
 from ultralytics import YOLO
 from PIL import Image, ImageOps
 import numpy as np
@@ -15,7 +14,7 @@ import streamlit.components.v1 as components
 HEUTE = datetime(2026, 3, 12).date()
 DB_FILE = "fundstuecke_db.csv"
 IMG_FOLDER = "images"
-CONFIDENCE_THRESHOLD = 0.50 
+CONFIDENCE_THRESHOLD = 0.50
 
 if not os.path.exists(IMG_FOLDER):
     os.makedirs(IMG_FOLDER)
