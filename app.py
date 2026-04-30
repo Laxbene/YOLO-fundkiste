@@ -10,7 +10,14 @@ import random
 from datetime import datetime, timedelta
 import subprocess
 import sys
+from ultralytics import YOLO
 
+# Pfad zu deiner Datei
+model = YOLO('best/data.pkl') 
+
+# Objekt auf einem Bild erkennen
+results = model('dein_bild.jpg')
+results[0].show()
 # Installiert ultralytics automatisch beim Starten des Skripts
 def install(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
