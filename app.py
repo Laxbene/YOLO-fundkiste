@@ -1,3 +1,4 @@
+
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
@@ -56,24 +57,27 @@ st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
     ["📸 Erfassen", "📊 Datenbank", "🔍 Suche", "🚀 Doodle Jump"])
 
-# --- KONFIGURATION ---
-HEUTE = datetime(2026, 3, 12).date()
-DB_FILE = "fundstuecke_db.csv"
-IMG_FOLDER = "images"
-CONFIDENCE_THRESHOLD = 0.50  # YOLO ist oft präziser, 0.50 ist ein guter Startwert
-
 if not os.path.exists(IMG_FOLDER):
     os.makedirs(IMG_FOLDER)
 
 SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
-# --- DATENBANK-FUNKTIONEN ---
+QUIZ_QUESTIONS = [
+    {"q": "Was ist die Hauptstadt von Frankreich?", "a": ["Berlin", "Madrid", "Paris", "Rom"], "correct": "Paris"},
+    {"q": "Wie viele Planeten hat unser Sonnensystem?", "a": ["7", "8", "9", "10"], "correct": "8"},
+    {"q": "Wer malte die Mona Lisa?", "a": ["Picasso", "Van Gogh", "Da Vinci", "Monet"], "correct": "Da Vinci"},
+    {"q": "Welches Element hat das Symbol 'O'?", "a": ["Gold", "Sauerstoff", "Eisen", "Kohlenstoff"], "correct": "Sauerstoff"},
+    {"q": "Was ist das größte Säugetier der Welt?", "a": ["Elefant", "Blauwal", "Giraffe", "Nashorn"], "correct": "Blauwal"}
+]
+
+# --- VERBESSERTE DATENBANK-FUNKTIONEN ---
 def get_database():
     if os.path.exists(DB_FILE):
         try:
             return pd.read_csv(DB_FILE)
         except Exception as e:
             st.error(f"Fehler beim Laden der DB: {e}")
+            # Backup bei Korruption
             return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
@@ -92,78 +96,63 @@ def delete_entry(entry_id):
     df = df[df['ID'] != entry_id]
     save_database(df)
 
-# --- YOLO KI MODELL LADEN ---
+# --- KI MODELL LADEN ---
 @st.cache_resource
-def load_yolo_model():
-    # Hier den Pfad zu deiner YOLO-Datei (.pt) angeben
-    # Wenn du ein exportiertes Keras-Modell hast, nutze 'best.pt' oder 'yolov8n.pt'
-    try:
-        model = YOLO('best.pt') # Ersetze 'best.pt' durch deinen Dateinamen
-        return model
-    except Exception as e:
-        st.error(f"Modell konnte nicht geladen werden: {e}")
-        return None
+def load_my_model():
+    try: return tf.keras.models.load_model('keras_model.h5', compile=False)
+    except: return None
+
+def load_labels(label_path):
+    if not os.path.exists(label_path): return {0: "Schuhe", 1: "Brotdose", 2: "Handschuhe", 3: "Helme"}
+    d = {}
+    with open(label_path, "r", encoding="utf-8") as f:
+        for l in f:
+            p = l.strip().split(" ", 1)
+            if len(p) == 2: d[int(p[0])] = p[1]
+    return d
 
 # --- UI SETUP ---
-st.set_page_config(page_title="Fundkiste AI 2026", layout="wide")
-model = load_yolo_model()
+st.set_page_config(page_title="Fundkiste Pro 2026", layout="wide")
+model = load_my_model()
+labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"])
+    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen", "🚀 Doodle Jump"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "📸 Erfassen":
-    st.header("📸 Neues Fundstück mit YOLO erfassen")
+    st.header("📸 Neues Fundstück erfassen")
     uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
-    
     if uploaded_file and model:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Vorschau", width=400)
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Vorschau", width=300)
+        img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
+        img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
+        pred = model.predict(np.expand_dims(img_array, axis=0))
+        idx = np.argmax(pred)
+        confidence = pred[0][idx]
         
-        # YOLO Prediction
-        results = model.predict(source=image, conf=CONFIDENCE_THRESHOLD)
-        
-        # Ergebnisse verarbeiten
-        if len(results[0].boxes) > 0:
-            # Wir nehmen das Objekt mit der höchsten Confidence
-            box = results[0].boxes[0]
-            class_id = int(box.cls[0])
-            klasse = model.names[class_id]
-            confidence = float(box.conf[0])
-            
-            st.success(f"✅ Objekt erkannt: **{klasse}** ({confidence:.1%})")
-            
-            # Box auf dem Bild anzeigen (optionaler Visualisierungs-Schritt)
-            res_plotted = results[0].plot() # Gibt ein BGR Array zurück
-            # st.image(res_plotted[:, :, ::-1], caption="KI Analyse", width=400)
+        if confidence < CONFIDENCE_THRESHOLD:
+            st.warning(f"⚠️ Nicht eindeutig erkannt ({confidence:.1%}).")
+            klasse, can_save = "Nicht erkannt", False
         else:
-            st.warning("⚠️ Kein bekanntes Objekt erkannt.")
-            klasse = "Nicht erkannt"
-
+            klasse, can_save = labels.get(idx, "Unbekannt"), True
+            st.success(f"✅ Erkannt: **{klasse}** ({confidence:.1%})")
+        
         with st.form("save_form"):
-            # Kategorien aus dem Modell laden
-            k_liste = list(model.names.values())
+            k_liste = list(labels.values())
             if "Nicht erkannt" not in k_liste: k_liste.append("Nicht erkannt")
-            
-            final_klasse = st.selectbox("Kategorie bestätigen", k_liste, index=k_liste.index(klasse) if klasse in k_liste else 0)
-            beschreibung = st.text_input("Zusatz-Info (Farbe, Zustand...)")
-            submit = st.form_submit_button("In Datenbank speichern")
-            
+            final_klasse = st.selectbox("Kategorie", k_liste, index=k_liste.index(klasse))
+            beschreibung = st.text_input("Zusatz-Info (Farbe, Marke...)")
+            submit = st.form_submit_button("Speichern")
             if submit:
                 img_path = os.path.join(IMG_FOLDER, f"{int(time.time())}.jpg")
                 image.save(img_path)
                 df = get_database()
-                neu = {
-                    "ID": int(time.time()), 
-                    "Kategorie": final_klasse, 
-                    "Funddatum": HEUTE, 
-                    "Ablaufdatum": HEUTE+timedelta(days=30), 
-                    "Status": beschreibung, 
-                    "Bild_Pfad": img_path
-                }
+                neu = {"ID": int(time.time()), "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung, "Bild_Pfad": img_path}
                 save_database(pd.concat([df, pd.DataFrame([neu])], ignore_index=True))
-                st.success("Erfolgreich gespeichert!")
+                st.success("In Datenbank archiviert!")
 
 # --- MODUS: DATENBANK ---
 elif auswahl == "📊 Datenbank":
@@ -176,15 +165,208 @@ elif auswahl == "📊 Datenbank":
                 path = str(row['Bild_Pfad'])
                 if os.path.exists(path): st.image(path, width=120)
                 else: st.write("🖼️")
-            with c2: st.write(f"**{row['Kategorie']}**\n\n{row['Status']}")
-            with c3: st.write(f"📅 {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
+            with c2: st.write(f"**{row['Kategorie']}**\n\n_{row['Status']}_")
+            with c3: st.write(f"📅 Fund: {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
             with c4: 
                 if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
                     delete_entry(row['ID']); st.rerun()
             st.divider()
 
-# --- SPIELE & REST (Doodle Jump bleibt gleich wie in deinem Code) ---
+# --- NEU: MODUS: KATEGORIEN-GALERIE (MIT BILDERN) ---
+elif auswahl == "📋 Kategorien-Galerie":
+    st.header("📋 Inventar nach Kategorien")
+    df = get_database()
+    
+    if not df.empty:
+        kategorien = sorted(df['Kategorie'].unique())
+        for kat in kategorien:
+            with st.expander(f"📁 {kat.upper()} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
+                kat_items = df[df['Kategorie'] == kat]
+                
+                # Wir erstellen ein Grid mit 4 Spalten für die Bilder
+                cols = st.columns(4)
+                for i, (_, item) in enumerate(kat_items.iterrows()):
+                    with cols[i % 4]:
+                        path = str(item['Bild_Pfad'])
+                        if os.path.exists(path):
+                            st.image(path, use_container_width=True)
+                        else:
+                            st.write("🖼️ Bild fehlt")
+                        st.caption(f"📅 {item['Funddatum']}")
+                        st.write(f"**{item['Status']}**")
+                        if st.button("✅ Weg", key=f"kat_del_{item['ID']}"):
+                            delete_entry(item['ID'])
+                            st.rerun()
+    else:
+        st.info("Keine Daten vorhanden.")
+
+# --- MODUS: SUCHE ---
+elif auswahl == "🔍 Suche":
+    st.header("🔍 Schnellsuche")
+    query = st.text_input("Suchbegriff...")
+    df = get_database()
+    if query and not df.empty:
+        res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
+        st.dataframe(res, use_container_width=True)
+
+# --- SPIELE SEKTION ---
+elif auswahl == "🎮 Space Typing":
+    st.header("☄️ Space Typer")
+    if 'input_key' not in st.session_state: st.session_state.input_key = 0
+    if 'game_active' not in st.session_state: st.session_state.game_active = False
+    if not st.session_state.game_active:
+        if st.button("Start"):
+            st.session_state.game_active, st.session_state.lives, st.session_state.score, st.session_state.current_word, st.session_state.start_time = True, 3, 0, random.choice(SPACE_WORDS), time.time()
+            st.rerun()
+    else:
+        rest = max(0.0, 7.0 - (time.time() - st.session_state.start_time))
+        st.write(f"### Wort: :orange[{st.session_state.current_word}] | ❤️ {st.session_state.lives} | ⭐ {st.session_state.score}")
+        st.progress(rest / 7.0)
+        fid = f"typer_{st.session_state.input_key}"
+        ui = st.text_input("Tippen:", key=fid).strip()
+        components.html(f"<script>window.parent.document.querySelector('input[id*=\"{fid}\"]').focus();</script>", height=0)
+        if ui.lower() == st.session_state.current_word.lower():
+            st.session_state.score += 10; st.session_state.current_word = random.choice(SPACE_WORDS); st.session_state.start_time = time.time(); st.session_state.input_key += 1; st.rerun()
+        if rest <= 0:
+            st.session_state.lives -= 1; st.session_state.start_time = time.time(); st.session_state.input_key += 1
+            if st.session_state.lives <= 0: st.session_state.game_active = False
+            st.rerun()
+        time.sleep(0.1); st.rerun()
+
+elif auswahl == "⚡ Reaktionstest":
+    st.header("⚡ Reaktionstest")
+    if 'rxn_state' not in st.session_state: st.session_state.rxn_state = "idle"
+    if st.session_state.rxn_state == "idle":
+        if st.button("Start"): st.session_state.rxn_state = "waiting"; st.session_state.wait_until = time.time() + random.uniform(2, 5); st.rerun()
+    elif st.session_state.rxn_state == "waiting":
+        st.error("### WARTEN..."); (time.sleep(0.05) or st.rerun()) if time.time() < st.session_state.wait_until else (setattr(st.session_state, 'rxn_state', 'go') or setattr(st.session_state, 'go_start', time.time()) or st.rerun())
+    elif st.session_state.rxn_state == "go":
+        if st.button("KLICK!"): st.session_state.last_res = (time.time() - st.session_state.go_start)*1000; st.session_state.rxn_state = "result"; st.rerun()
+    elif st.session_state.rxn_state == "result":
+        st.write(f"## {st.session_state.last_res:.0f} ms"); (st.button("Nochmal") and setattr(st.session_state, 'rxn_state', 'idle') or st.rerun())
+
+elif auswahl == "🎯 Aim-Trainer":
+    st.header("🎯 Aim-Trainer")
+    if 'aim_hits' not in st.session_state: st.session_state.aim_hits = 0
+    if st.session_state.aim_hits == 0:
+        if st.button("Start"): st.session_state.aim_hits = 1; st.session_state.aim_start = time.time(); st.rerun()
+    elif st.session_state.aim_hits <= 10:
+        c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
+    else:
+        st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
+        
+# --- MODUS: DOODLE JUMP (FAIR-PLAY UPDATE) ---
 elif auswahl == "🚀 Doodle Jump":
-    # Hier fügst du deinen Doodle Jump HTML/JS Code wieder ein
-    st.header("🚀 Space Jumper")
-    # ... (Code aus deinem Original einfügen)
+    st.header("🚀 Space Jumper - Pro Edition")
+    st.info("Steuerung: Pfeiltasten LINKS/RECHTS. Jede Lücke ist springbar!")
+    
+    doodle_html = """
+    <canvas id="gameCanvas" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#fcf5f9;"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d');
+        let player = { x: 180, y: 450, w: 35, h: 45, vy: 0, vx: 0 };
+        let platforms = [], score = 0, keys = {};
+        const gravity = 0.25, jumpPower = -9.5; // Leicht erhöhte Sprungkraft für Sicherheit
+
+        function createPlatform(y, isBase=false) {
+            let type = 'normal';
+            if(!isBase) {
+                let r = Math.random();
+                if(r > 0.90) type = 'boost'; 
+                else if(r > 0.75) type = 'broken';
+            } else type = 'base';
+            
+            // x-Position so wählen, dass sie nicht zu weit am Rand klebt
+            let x = isBase ? 100 : Math.random() * 320; 
+            return { x: x, y: y, w: isBase ? 200 : 70, h: 12, type: type };
+        }
+
+        function init() {
+            score = 0; player.x = 180; player.y = 450; player.vy = 0;
+            platforms = [];
+            // Bodenplatte
+            platforms.push(createPlatform(550, true));
+            // Plattformen mit festem Maximalabstand (max 85 Pixel vertikal)
+            // Das garantiert, dass man mit jumpPower (-9.5) immer hochkommt
+            for(let i=0; i<7; i++) {
+                platforms.push(createPlatform(550 - (i + 1) * 85));
+            }
+        }
+
+        function update() {
+            player.vy += gravity;
+            player.y += player.vy;
+            
+            if(keys['ArrowLeft']) player.vx = -5;
+            else if(keys['ArrowRight']) player.vx = 5;
+            else player.vx *= 0.8; // Sanftes Abbremsen
+            
+            player.x += player.vx;
+
+            // Wrap-around
+            if(player.x < -30) player.x = canvas.width;
+            if(player.x > canvas.width) player.x = -30;
+
+            // Kamera-Follow
+            if(player.y < 250) {
+                let delta = 250 - player.y;
+                player.y = 250;
+                platforms.forEach(p => {
+                    p.y += delta;
+                    if(p.y > 600) {
+                        score++;
+                        // Neue Plattform immer oben im Bereich 0-20px generieren
+                        Object.assign(p, createPlatform(p.y - 600));
+                    }
+                });
+            }
+
+            // Kollision (nur beim Runterfallen)
+            if(player.vy > 0) {
+                platforms.forEach(p => {
+                    if(player.x + player.w > p.x && player.x < p.x + p.w &&
+                       player.y + player.h > p.y && player.y + player.h < p.y + 15) {
+                        
+                        if(p.type === 'boost') {
+                            player.vy = jumpPower * 1.8;
+                        } else if(p.type === 'broken') {
+                            player.vy = jumpPower;
+                            p.y = 1000; // Block "zerstört"
+                        } else {
+                            player.vy = jumpPower;
+                        }
+                    }
+                });
+            }
+
+            if(player.y > 600) init(); // Game Over
+        }
+
+        function draw() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            
+            // Astronaut zeichnen
+            ctx.fillStyle = '#ff4b4b'; ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.fillStyle = '#88ccff'; ctx.fillRect(player.x+5, player.y+8, player.w-10, 15);
+
+            // Blöcke zeichnen
+            platforms.forEach(p => {
+                if(p.type==='boost') ctx.fillStyle='#f1c40f';
+                else if(p.type==='broken') ctx.fillStyle='#ffffff';
+                else ctx.fillStyle='#2ecc71';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+            });
+
+            ctx.fillStyle = '#03396c'; ctx.font = 'bold 20px Courier';
+            ctx.fillText("SCORE: " + score, 20, 40);
+        }
+
+        window.onkeydown = e => { keys[e.key] = true; if(e.key.includes("Arrow")) e.preventDefault(); };
+        window.onkeyup = e => keys[e.key] = false;
+
+        init();
+        function main() { update(); draw(); requestAnimationFrame(main); }
+        main();
+    </script>
+    """
+    components.html(doodle_html, height=650)
