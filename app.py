@@ -24,35 +24,67 @@ st.set_page_config(page_title="Fundkiste Pro 2026", layout="wide")
 
 st.markdown("""
     <style>
-    /* Hintergrund und Karten-Design */
-    .stApp { background-color: #f4f7f9; }
-    
-    /* Karten-Effekt für Expander */
-    div[data-testid="stExpander"] {
-        background-color: white !important;
-        border-radius: 15px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
-        border: none !important;
-        padding: 10px;
-    }
-    
-    /* Metriken Styling */
-    div[data-testid="stMetric"] {
-        background-color: white;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    /* 1. Haupt-Hintergrund mit sanftem Gradient */
+    .stApp {
+        background: linear-gradient(135deg, #0e1117 0%, #1a1c24 100%);
+        color: #e0e0e0;
     }
 
-    /* Button Styling */
-    .stButton>button {
-        border-radius: 10px;
-        font-weight: 600;
-        transition: all 0.2s ease;
+    /* 2. Karten-Design für die Expander */
+    div[data-testid="stExpander"] {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border-radius: 15px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px);
+        margin-bottom: 15px;
     }
+
+    /* 3. Styling für die Metriken (Zahlen-Dashboard) */
+    div[data-testid="stMetric"] {
+        background-color: rgba(255, 255, 255, 0.03);
+        border-left: 5px solid #00d4ff;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+    /* 4. Buttons: Modern & Leuchtend */
+    .stButton>button {
+        background: linear-gradient(90deg, #00d4ff 0%, #0072ff 100%);
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 12px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+        color: white;
+    }
+
+    /* 5. Sidebar-Anpassung */
+    section[data-testid="stSidebar"] {
+        background-color: #0e1117 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* 6. Eingabefelder */
+    .stTextInput>div>div>input {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: white;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* 7. Titel-Styling */
+    h1, h2, h3 {
+        color: #00d4ff !important;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
     </style>
     """, unsafe_allow_html=True)
