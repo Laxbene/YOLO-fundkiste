@@ -1,28 +1,60 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
 import pandas as pd
 import os
 import time
-import random
 from datetime import datetime, timedelta
-import subprocess
-import sys
-from ultralytics import YOLO
 
-# Pfad zu deiner Datei
-model = YOLO('best/data.pkl') 
+# --- KONFIGURATION ---
+HEUTE = datetime(2026, 3, 12).date()
+DB_FILE = "fundstuecke_db.csv"
+IMG_FOLDER = "images"
+CONFIDENCE_THRESHOLD = 0.50 
 
-# Objekt auf einem Bild erkennen
-results = model('dein_bild.jpg')
-results[0].show()
-# Installiert ultralytics automatisch beim Starten des Skripts
-def install(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+# Verzeichnisse erstellen
+if not os.path.exists(IMG_FOLDER):
+    os.makedirs(IMG_FOLDER)
 
-# install("ultralytics")
+# --- KI MODELL LADEN (Cache verhindert Neu-Laden bei jedem Klick) ---
+@st.cache_resource
+def load_yolo_model():
+    try:
+        # Versuche das Modell zu laden. 
+        # Falls 'best.pt' nicht da ist, nimmt er das Standard 'yolov8n.pt'
+        model_path = 'best.pt' if os.path.exists('best.pt') else 'yolov8n.pt'
+        return YOLO(model_path)
+    except Exception as e:
+        st.error(f"Modell konnte nicht geladen werden: {e}")
+        return None
+
+# --- DATENBANK-FUNKTIONEN ---
+def get_database():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
+    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
+
+def save_database(df):
+    df.to_csv(DB_FILE, index=False)
+
+def delete_entry(entry_id):
+    df = get_database()
+    # Bild löschen
+    path_row = df.loc[df['ID'] == entry_id, 'Bild_Pfad']
+    if not path_row.empty and os.path.exists(str(path_row.values[0])):
+        os.remove(str(path_row.values[0]))
+    # Zeile entfernen
+    df = df[df['ID'] != entry_id]
+    save_database(df)
+
+# --- UI SETUP ---
+st.set_page_config(page_title="Fundkiste AI 2026", layout="wide")
+model = load_yolo_model()
+
+st.sidebar.title("🏢 Zentrale")
+auswahl = st.sidebar.selectbox("Navigation", 
+    ["📸 Erfassen", "📊 Datenbank", "🔍 Suche", "🚀 Doodle Jump"])
 
 # --- KONFIGURATION ---
 HEUTE = datetime(2026, 3, 12).date()
