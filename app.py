@@ -1,39 +1,33 @@
 
 import streamlit as st
 from ultralytics import YOLO
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 import pandas as pd
 import os
 import time
+import random
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
-# --- KONFIGURATION ---
+# --- 1. GLOBALE KONFIGURATION ---
 HEUTE = datetime(2026, 3, 12).date()
 DB_FILE = "fundstuecke_db.csv"
 IMG_FOLDER = "images"
 CONFIDENCE_THRESHOLD = 0.50 
 
-# Verzeichnisse erstellen
 if not os.path.exists(IMG_FOLDER):
     os.makedirs(IMG_FOLDER)
 
-# --- KI MODELL LADEN (Cache verhindert Neu-Laden bei jedem Klick) ---
-@st.cache_resource
-def load_yolo_model():
-    try:
-        # Versuche das Modell zu laden. 
-        # Falls 'best.pt' nicht da ist, nimmt er das Standard 'yolov8n.pt'
-        model_path = 'best.pt' if os.path.exists('best.pt') else 'yolov8n.pt'
-        return YOLO(model_path)
-    except Exception as e:
-        st.error(f"Modell konnte nicht geladen werden: {e}")
-        return None
+SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Alien", "Galaxy", "Mars", "Rocket", "Star", "Universe"]
 
-# --- DATENBANK-FUNKTIONEN ---
+# --- 2. DATENBANK & LOGIK ---
 def get_database():
     if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
+        try:
+            return pd.read_csv(DB_FILE)
+        except:
+            return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
 def save_database(df):
@@ -41,164 +35,101 @@ def save_database(df):
 
 def delete_entry(entry_id):
     df = get_database()
-    # Bild löschen
-    path_row = df.loc[df['ID'] == entry_id, 'Bild_Pfad']
-    if not path_row.empty and os.path.exists(str(path_row.values[0])):
-        os.remove(str(path_row.values[0]))
-    # Zeile entfernen
-    df = df[df['ID'] != entry_id]
-    save_database(df)
-
-# --- UI SETUP ---
-st.set_page_config(page_title="Fundkiste AI 2026", layout="wide")
-model = load_yolo_model()
-
-st.sidebar.title("🏢 Zentrale")
-auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "🔍 Suche", "🚀 Doodle Jump"])
-
-if not os.path.exists(IMG_FOLDER):
-    os.makedirs(IMG_FOLDER)
-
-SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
-
-QUIZ_QUESTIONS = [
-    {"q": "Was ist die Hauptstadt von Frankreich?", "a": ["Berlin", "Madrid", "Paris", "Rom"], "correct": "Paris"},
-    {"q": "Wie viele Planeten hat unser Sonnensystem?", "a": ["7", "8", "9", "10"], "correct": "8"},
-    {"q": "Wer malte die Mona Lisa?", "a": ["Picasso", "Van Gogh", "Da Vinci", "Monet"], "correct": "Da Vinci"},
-    {"q": "Welches Element hat das Symbol 'O'?", "a": ["Gold", "Sauerstoff", "Eisen", "Kohlenstoff"], "correct": "Sauerstoff"},
-    {"q": "Was ist das größte Säugetier der Welt?", "a": ["Elefant", "Blauwal", "Giraffe", "Nashorn"], "correct": "Blauwal"}
-]
-
-# --- VERBESSERTE DATENBANK-FUNKTIONEN ---
-def get_database():
-    if os.path.exists(DB_FILE):
-        try:
-            return pd.read_csv(DB_FILE)
-        except Exception as e:
-            st.error(f"Fehler beim Laden der DB: {e}")
-            # Backup bei Korruption
-            return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
-    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
-
-def save_database(df):
-    try:
-        df.to_csv(DB_FILE, index=False)
-    except Exception as e:
-        st.error(f"Speichern fehlgeschlagen: {e}")
-
-def delete_entry(entry_id):
-    df = get_database()
-    img_to_delete = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
-    if len(img_to_delete) > 0 and os.path.exists(str(img_to_delete[0])):
-        try: os.remove(str(img_to_delete[0]))
+    img_path = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
+    if len(img_path) > 0 and os.path.exists(str(img_path[0])):
+        try: os.remove(str(img_path[0]))
         except: pass
     df = df[df['ID'] != entry_id]
     save_database(df)
 
-# --- KI MODELL LADEN ---
 @st.cache_resource
-def load_my_model():
-    try: return tf.keras.models.load_model('keras_model.h5', compile=False)
+def load_yolo_model():
+    model_path = 'best.pt' if os.path.exists('best.pt') else 'yolov8n.pt'
+    try: return YOLO(model_path)
     except: return None
 
-def load_labels(label_path):
-    if not os.path.exists(label_path): return {0: "Schuhe", 1: "Brotdose", 2: "Handschuhe", 3: "Helme"}
-    d = {}
-    with open(label_path, "r", encoding="utf-8") as f:
-        for l in f:
-            p = l.strip().split(" ", 1)
-            if len(p) == 2: d[int(p[0])] = p[1]
-    return d
-
-# --- UI SETUP ---
+# --- 3. SEITEN-SETUP ---
 st.set_page_config(page_title="Fundkiste Pro 2026", layout="wide")
-model = load_my_model()
-labels = load_labels("labels.txt")
+model = load_yolo_model()
 
+# Sidebar Navigation (Nur EINMAL definiert)
 st.sidebar.title("🏢 Zentrale")
+if 'page' not in st.session_state:
+    st.session_state.page = "📸 Erfassen"
+
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen", "🚀 Doodle Jump"])
+    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"],
+    index=["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"].index(st.session_state.page))
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "📸 Erfassen":
-    st.header("📸 Neues Fundstück erfassen")
-    uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
-    if uploaded_file and model:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Vorschau", width=300)
-        img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
-        img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
-        pred = model.predict(np.expand_dims(img_array, axis=0))
-        idx = np.argmax(pred)
-        confidence = pred[0][idx]
+    st.header("📸 Fundstück-Analyse")
+    
+    # Check ob ein Bild aus der Galerie geschickt wurde
+    target_image = None
+    if 'pre_load_img' in st.session_state and st.session_state.pre_load_img:
+        target_image = st.session_state.pre_load_img
+        st.info("Bild aus Galerie geladen.")
+        if st.button("Anderes Bild hochladen"):
+            st.session_state.pre_load_img = None
+            st.rerun()
+    else:
+        uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
+        if uploaded_file:
+            target_image = Image.open(uploaded_file)
+
+    if target_image and model:
+        image = target_image.convert("RGB")
+        st.image(image, caption="Scan-Vorgang...", width=400)
         
-        if confidence < CONFIDENCE_THRESHOLD:
-            st.warning(f"⚠️ Nicht eindeutig erkannt ({confidence:.1%}).")
-            klasse, can_save = "Nicht erkannt", False
-        else:
-            klasse, can_save = labels.get(idx, "Unbekannt"), True
-            st.success(f"✅ Erkannt: **{klasse}** ({confidence:.1%})")
+        # YOLO Prediction
+        results = model.predict(source=image, conf=CONFIDENCE_THRESHOLD)
+        klasse = model.names[int(results[0].boxes[0].cls[0])] if len(results[0].boxes) > 0 else "Nicht erkannt"
         
         with st.form("save_form"):
-            k_liste = list(labels.values())
-            if "Nicht erkannt" not in k_liste: k_liste.append("Nicht erkannt")
-            final_klasse = st.selectbox("Kategorie", k_liste, index=k_liste.index(klasse))
-            beschreibung = st.text_input("Zusatz-Info (Farbe, Marke...)")
-            submit = st.form_submit_button("Speichern")
-            if submit:
+            k_liste = list(model.names.values()) + ["Nicht erkannt"]
+            final_klasse = st.selectbox("Kategorie bestätigen", k_liste, index=k_liste.index(klasse) if klasse in k_liste else 0)
+            beschreibung = st.text_input("Zusatz-Info (Farbe, Zustand...)")
+            if st.form_submit_button("In Datenbank speichern"):
                 img_path = os.path.join(IMG_FOLDER, f"{int(time.time())}.jpg")
                 image.save(img_path)
                 df = get_database()
                 neu = {"ID": int(time.time()), "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung, "Bild_Pfad": img_path}
                 save_database(pd.concat([df, pd.DataFrame([neu])], ignore_index=True))
-                st.success("In Datenbank archiviert!")
+                st.session_state.pre_load_img = None
+                st.success("Gespeichert!")
+                st.rerun()
 
-# --- MODUS: DATENBANK ---
-elif auswahl == "📊 Datenbank":
-    st.header("📊 Alle Fundstücke")
-    df = get_database()
-    if not df.empty:
-        for _, row in df.iterrows():
-            c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-            with c1:
-                path = str(row['Bild_Pfad'])
-                if os.path.exists(path): st.image(path, width=120)
-                else: st.write("🖼️")
-            with c2: st.write(f"**{row['Kategorie']}**\n\n_{row['Status']}_")
-            with c3: st.write(f"📅 Fund: {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
-            with c4: 
-                if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
-                    delete_entry(row['ID']); st.rerun()
-            st.divider()
-
-# --- NEU: MODUS: KATEGORIEN-GALERIE (MIT BILDERN) ---
+# --- MODUS: KATEGORIEN-GALERIE ---
 elif auswahl == "📋 Kategorien-Galerie":
-    st.header("📋 Inventar nach Kategorien")
+    st.header("📋 Inventar-Galerie")
     df = get_database()
-    
     if not df.empty:
         kategorien = sorted(df['Kategorie'].unique())
         for kat in kategorien:
-            with st.expander(f"📁 {kat.upper()} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
+            with st.expander(f"📁 {kat.upper()}", expanded=True):
                 kat_items = df[df['Kategorie'] == kat]
-                
-                # Wir erstellen ein Grid mit 4 Spalten für die Bilder
                 cols = st.columns(4)
                 for i, (_, item) in enumerate(kat_items.iterrows()):
                     with cols[i % 4]:
-                        path = str(item['Bild_Pfad'])
-                        if os.path.exists(path):
-                            st.image(path, use_container_width=True)
-                        else:
-                            st.write("🖼️ Bild fehlt")
-                        st.caption(f"📅 {item['Funddatum']}")
-                        st.write(f"**{item['Status']}**")
-                        if st.button("✅ Weg", key=f"kat_del_{item['ID']}"):
-                            delete_entry(item['ID'])
-                            st.rerun()
+                        if os.path.exists(str(item['Bild_Pfad'])):
+                            st.image(item['Bild_Pfad'], use_container_width=True)
+                            
+                            # KNOPF: AN SCANNER SCHICKEN
+                            if st.button("🔍 Re-Scan", key=f"rescan_{item['ID']}"):
+                                st.session_state.pre_load_img = Image.open(item['Bild_Pfad'])
+                                st.session_state.page = "📸 Erfassen"
+                                st.rerun()
+                                
+                            if st.button("🗑️ Löschen", key=f"del_{item['ID']}"):
+                                delete_entry(item['ID'])
+                                st.rerun()
     else:
         st.info("Keine Daten vorhanden.")
+
+# --- (Restliche Modi wie Suche, Spiele etc. hier einfügen) ---
+
+
 
 # --- MODUS: SUCHE ---
 elif auswahl == "🔍 Suche":
