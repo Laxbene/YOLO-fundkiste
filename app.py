@@ -58,8 +58,8 @@ if 'page' not in st.session_state:
     st.session_state.page = "📸 Erfassen"
 
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"],
-    index=["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"].index(st.session_state.page))
+    ["📸 Erfassen", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"],
+    index=["📸 Erfassen", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "🚀 Doodle Jump"].index(st.session_state.page))
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "📸 Erfassen":
