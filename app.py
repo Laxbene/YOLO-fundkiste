@@ -8,6 +8,14 @@ import os
 import time
 import random
 from datetime import datetime, timedelta
+import subprocess
+import sys
+
+# Installiert ultralytics automatisch beim Starten des Skripts
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# install("ultralytics")
 
 # --- KONFIGURATION ---
 HEUTE = datetime(2026, 3, 12).date()
